@@ -79,6 +79,7 @@ export async function initDb(): Promise<void> {
            name       TEXT NOT NULL,
            color      TEXT NOT NULL,
            position   INTEGER NOT NULL DEFAULT 0,
+           is_public  INTEGER NOT NULL DEFAULT 1,
            created_at INTEGER NOT NULL,
            updated_at INTEGER NOT NULL
          )`,
@@ -100,6 +101,7 @@ export async function initDb(): Promise<void> {
            id         TEXT PRIMARY KEY,
            title      TEXT NOT NULL,
            content    TEXT NOT NULL DEFAULT '',
+           is_public  INTEGER NOT NULL DEFAULT 1,
            created_at INTEGER NOT NULL,
            updated_at INTEGER NOT NULL
          )`,
@@ -115,6 +117,28 @@ export async function initDb(): Promise<void> {
       ],
       "write",
     );
+
+    // Additive migrations for tables that predate a column (the shared
+    // database was bootstrapped before visibility existed). sqlite has no
+    // ADD COLUMN IF NOT EXISTS, so the ALTER is attempted and the one
+    // expected failure is swallowed. DDL strings are literals, never built
+    // from input. DEFAULT 1: the site's posture is public-by-default,
+    // private as the opt-in exception.
+    await ensureColumn(
+      "ALTER TABLE todo_categories ADD COLUMN is_public INTEGER NOT NULL DEFAULT 1",
+    );
+    await ensureColumn(
+      "ALTER TABLE todo_notes ADD COLUMN is_public INTEGER NOT NULL DEFAULT 1",
+    );
   })();
   return ready;
+}
+
+async function ensureColumn(ddl: string): Promise<void> {
+  try {
+    await db().execute(ddl);
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("duplicate column name")) return;
+    throw e;
+  }
 }

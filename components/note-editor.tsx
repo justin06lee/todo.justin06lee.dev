@@ -10,8 +10,14 @@ import { useDialog } from "@/components/chrome/dialog";
 import { Editor } from "@/components/chrome/editor";
 import { InlineEdit } from "@/components/chrome/inline-edit";
 import { Prose } from "@/components/chrome/prose";
+import { Switch } from "@/components/chrome/switch";
 import { useToast } from "@/components/chrome/toast";
-import { deleteNoteAction, renameNoteAction, saveNoteAction } from "@/app/actions";
+import {
+  deleteNoteAction,
+  renameNoteAction,
+  saveNoteAction,
+  setNotePublicAction,
+} from "@/app/actions";
 
 // Module scope so the reference is stable — the editor memoizes its preview
 // pane on it, and a fresh closure per render would reflow the preview on every
@@ -40,6 +46,21 @@ export function NoteEditor({ note }: { note: Note }) {
   const [content, setContent] = useState(note.content);
   const [savedContent, setSavedContent] = useState(note.content);
   const dirty = content !== savedContent;
+  // Local so the switch moves instantly; reverted if the action fails. A
+  // switch (not a checkbox) because the flip takes effect the moment it
+  // moves — there is no submit to commit it.
+  const [isPublic, setIsPublic] = useState(note.isPublic);
+
+  const toggleVisibility = (next: boolean) => {
+    setIsPublic(next);
+    startTransition(async () => {
+      const result = await setNotePublicAction(note.id, next);
+      if (!result.ok) {
+        setIsPublic(!next);
+        toast({ title: result.error, variant: "danger" });
+      }
+    });
+  };
 
   const save = () => {
     // Read through state directly: this closure is re-created each render, and
@@ -127,6 +148,13 @@ export function NoteEditor({ note }: { note: Note }) {
             className="text-lg font-medium"
           />
         </div>
+        <Switch
+          checked={isPublic}
+          onChange={toggleVisibility}
+          size="sm"
+          label={isPublic ? "public" : "private"}
+          ariaLabel="note visibility"
+        />
         <span
           role="status"
           className="shrink-0 font-mono text-[11px] uppercase tracking-[0.18em] text-white/40"

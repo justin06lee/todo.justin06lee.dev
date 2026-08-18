@@ -24,9 +24,9 @@ export const metadata: Metadata = {
   applicationName: "todo.justin06lee.dev",
   authors: [{ name: "justin06lee" }],
   creator: "justin06lee",
-  // The whole site sits behind the admin password — there is no public
-  // surface, so nothing here should be indexed.
-  robots: { index: false, follow: false },
+  // Public read, owner write — the public pages are indexable; /login opts
+  // itself out in its own metadata.
+  robots: { index: true, follow: true },
 };
 
 export const viewport = {

@@ -20,12 +20,12 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: [
-          // Clickjacking. The whole site is an admin surface — every page
-          // past /login renders mutating controls — so an attacker who can
-          // frame it invisibly can steer a click into deleting a note or a
-          // category. The session cookie's sameSite: "strict" does not help
-          // here — it stops the cookie riding cross-site requests, not the
-          // page being framed and clicked.
+          // Clickjacking. The site reads publicly, but every page renders
+          // mutating controls for the signed-in owner — so an attacker who
+          // can frame it invisibly can steer the owner's click into deleting
+          // a note or a category. The session cookie's sameSite: "strict"
+          // does not help here — it stops the cookie riding cross-site
+          // requests, not the page being framed and clicked.
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
 

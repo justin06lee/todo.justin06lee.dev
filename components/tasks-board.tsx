@@ -1,7 +1,17 @@
 "use client";
 
 import { useMemo, useOptimistic, useState, useTransition } from "react";
-import { CheckCheck, MoreHorizontal, Palette, Plus, Trash2, X } from "lucide-react";
+import {
+  Check,
+  CheckCheck,
+  Globe,
+  Lock,
+  MoreHorizontal,
+  Palette,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import type { TodoCategory, TodoTask } from "@/lib/todos";
 import { pickNextUnusedColor } from "@/lib/colors";
 import { MAX_CATEGORY_NAME_LEN, MAX_TASK_TITLE_LEN } from "@/lib/validate";
@@ -24,6 +34,7 @@ import {
   recolorCategoryAction,
   renameCategoryAction,
   renameTaskAction,
+  setCategoryPublicAction,
   setTaskDoneAction,
   type ActionResult,
 } from "@/app/actions";
@@ -31,6 +42,7 @@ import {
 type BoardProps = {
   categories: TodoCategory[];
   tasks: TodoTask[];
+  admin: boolean;
 };
 
 /**
@@ -39,8 +51,12 @@ type BoardProps = {
  * holds no copy of the data — only drafts and open/closed flags. The one
  * exception is the done checkbox, which gets an optimistic layer because a
  * ~100ms round trip between click and checkmark reads as a broken checkbox.
+ *
+ * `admin` splits the render, not the data — the server already filtered
+ * private categories out of an anonymous request, so this flag only decides
+ * whether rows are controls or plain text.
  */
-export function TasksBoard({ categories, tasks }: BoardProps) {
+export function TasksBoard({ categories, tasks, admin }: BoardProps) {
   const { toast } = useToast();
   const [, startTransition] = useTransition();
   const [optimisticTasks, applyDone] = useOptimistic(
@@ -72,23 +88,95 @@ export function TasksBoard({ categories, tasks }: BoardProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      {categories.length === 0 ? (
-        <EmptyState
-          title="no categories yet"
-          description="add one below — tasks live under categories."
-        />
-      ) : (
-        categories.map((category) => (
+      {categories.length === 0 &&
+        // Empty-because-new (owner) and empty-because-nothing-is-public
+        // (visitor) are different states and get different copy.
+        (admin ? (
+          <EmptyState
+            title="no categories yet"
+            description="add one below — tasks live under categories."
+          />
+        ) : (
+          <EmptyState
+            title="nothing here yet"
+            description="public lists show up here once there are some."
+          />
+        ))}
+      {categories.map((category) =>
+        admin ? (
           <CategorySection
             key={category.id}
             category={category}
             tasks={tasksByCategory.get(category.id) ?? []}
             onToggleTask={toggleTask}
           />
-        ))
+        ) : (
+          <ReadOnlyCategorySection
+            key={category.id}
+            category={category}
+            tasks={tasksByCategory.get(category.id) ?? []}
+          />
+        ),
       )}
-      <AddCategoryForm usedColors={categories.map((c) => c.color)} />
+      {admin && <AddCategoryForm usedColors={categories.map((c) => c.color)} />}
     </div>
+  );
+}
+
+/** The visitor's board: same shapes, no controls. */
+function ReadOnlyCategorySection({
+  category,
+  tasks,
+}: {
+  category: TodoCategory;
+  tasks: TodoTask[];
+}) {
+  const doneCount = tasks.filter((t) => t.done).length;
+
+  return (
+    <section
+      aria-label={category.name}
+      className="border border-l-2 border-white/10"
+      style={{ borderLeftColor: category.color }}
+    >
+      <header className="flex items-center gap-3 border-b border-white/10 px-4 py-2.5">
+        <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{category.name}</h2>
+        <span className="shrink-0 font-mono text-[11px] uppercase tracking-[0.18em] text-white/40">
+          {doneCount}/{tasks.length} done
+        </span>
+      </header>
+      {tasks.length > 0 ? (
+        <ul>
+          {tasks.map((task) => (
+            <li
+              key={task.id}
+              className="flex items-center gap-3 border-b border-white/5 px-4 py-2 last:border-b-0"
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  "inline-flex size-4 shrink-0 items-center justify-center border",
+                  task.done ? "border-white bg-white" : "border-white/25",
+                )}
+              >
+                {task.done && <Check size={12} className="text-black" />}
+              </span>
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate text-sm",
+                  task.done ? "text-white/35 line-through" : "text-white/80",
+                )}
+              >
+                {task.done && <span className="sr-only">done: </span>}
+                {task.title}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="px-4 py-3 text-sm text-white/35">nothing here yet.</p>
+      )}
+    </section>
   );
 }
 
@@ -171,6 +259,12 @@ function CategorySection({
             className="text-sm font-medium"
           />
         </div>
+        {!category.isPublic && (
+          <span className="flex shrink-0 items-center gap-1 font-mono text-[11px] uppercase tracking-[0.18em] text-white/40">
+            <Lock size={11} aria-hidden />
+            private
+          </span>
+        )}
         <span className="shrink-0 font-mono text-[11px] uppercase tracking-[0.18em] text-white/40">
           {doneCount}/{tasks.length} done
         </span>
@@ -178,6 +272,16 @@ function CategorySection({
           align="right"
           trigger={<MoreHorizontal size={14} aria-hidden />}
           items={[
+            {
+              label: category.isPublic ? "make private" : "make public",
+              icon: category.isPublic ? Lock : Globe,
+              onSelect: () =>
+                startTransition(async () => {
+                  surface(
+                    await setCategoryPublicAction(category.id, !category.isPublic),
+                  );
+                }),
+            },
             {
               label: "change color",
               icon: Palette,
@@ -278,6 +382,9 @@ function AddCategoryForm({ usedColors }: { usedColors: string[] }) {
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState("");
+  // Checkbox, not switch: visibility here is an intent the submit commits,
+  // together with the rest of the form.
+  const [isPrivate, setIsPrivate] = useState(false);
   // null means "follow the suggestion" — after a category is added the board's
   // colors change and the suggestion recomputes, so the picker keeps pointing
   // at the least-used hex without any state reset.
@@ -290,13 +397,14 @@ function AddCategoryForm({ usedColors }: { usedColors: string[] }) {
     const trimmed = name.trim();
     if (!trimmed) return;
     startTransition(async () => {
-      const result = await createCategoryAction(trimmed, color);
+      const result = await createCategoryAction(trimmed, color, !isPrivate);
       if (!result.ok) {
         toast({ title: result.error, variant: "danger" });
         return;
       }
       setName("");
       setPicked(null);
+      setIsPrivate(false);
     });
   };
 
@@ -318,6 +426,11 @@ function AddCategoryForm({ usedColors }: { usedColors: string[] }) {
           className="w-56"
         />
         <ColorSwatchPicker value={color} onChange={setPicked} ariaLabel="new category color" />
+        <Checkbox
+          label="private"
+          checked={isPrivate}
+          onChange={(e) => setIsPrivate(e.target.checked)}
+        />
         <Button type="submit" variant="solid" size="sm" disabled={!name.trim() || pending}>
           add
         </Button>
