@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Tuned for 16px: at tab size only the silhouette survives, so the mark is
+       just a bright box and a check — no texture to average away. -->
+  <rect width="32" height="32" fill="#000000"/>
+  <rect x="6.5" y="6.5" width="19" height="19" fill="none" stroke="#ffffff" stroke-width="2.5"/>
+  <path d="M11 16.5 L14.5 20 L21.5 12" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="square"/>
+</svg>
