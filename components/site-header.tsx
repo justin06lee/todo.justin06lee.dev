@@ -58,6 +58,9 @@ export function SiteHeader({ signedIn = true }: { signedIn?: boolean }) {
               icon={LogOut}
               label="sign out"
               tooltip="sign out"
+              // The header is at the document's top edge — an upward pill
+              // clips there, which is the bug that earned button this prop.
+              tooltipSide="bottom"
             />
           </form>
         )}

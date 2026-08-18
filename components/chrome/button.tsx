@@ -13,6 +13,12 @@ export type ButtonProps = {
   iconRight?: LucideIcon;
   /** White slide-up pill shown on hover. */
   tooltip?: string;
+  /**
+   * Side the tooltip pill appears on. The pill is not portaled, so a button
+   * sitting near the top of the viewport (a header, a navbar) clips an upward
+   * pill against the document's top edge — pass "bottom" there.
+   */
+  tooltipSide?: "top" | "bottom";
   /** aria-label override; required for icon-only buttons. */
   label?: string;
   /** Renders as <a>; external URLs (http(s)://) get target="_blank" auto-applied. */
@@ -60,6 +66,7 @@ export function Button({
   icon: Icon,
   iconRight: IconRight,
   tooltip,
+  tooltipSide = "top",
   label,
   href,
   linkComponent,
@@ -129,7 +136,17 @@ export function Button({
   const content = (
     <>
       {tooltipShown && (
-        <span aria-hidden className="pointer-events-none absolute bottom-full left-1/2 z-10 whitespace-nowrap bg-white px-2 py-1 text-[11px] text-black opacity-0 [transform:translate(-50%,4px)] transition-[opacity,transform] duration-150 group-hover:opacity-100 group-hover:[transform:translate(-50%,-4px)]">
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute left-1/2 z-10 whitespace-nowrap bg-white px-2 py-1 text-[11px] text-black opacity-0 transition-[opacity,transform] duration-150 group-hover:opacity-100",
+            // Same single-arbitrary-value transform trick as the tooltip
+            // component: composed translate utilities snap instead of sliding.
+            tooltipSide === "bottom"
+              ? "top-full [transform:translate(-50%,-4px)] group-hover:[transform:translate(-50%,4px)]"
+              : "bottom-full [transform:translate(-50%,4px)] group-hover:[transform:translate(-50%,-4px)]",
+          )}
+        >
           {tooltipShown}
         </span>
       )}
