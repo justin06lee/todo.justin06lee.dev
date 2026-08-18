@@ -8,6 +8,7 @@ export type TodoCategory = {
   name: string;
   color: string;
   position: number;
+  isPublic: boolean;
   createdAt: number;
 };
 
@@ -42,17 +43,28 @@ export type CategoryWriteResult =
  * `execute` hops are the whole latency budget. Rows come back ordered by
  * position (creation order): the board is "a big list of categories and tasks"
  * to reference, so it stays in the order it was written.
+ *
+ * Visibility is category-level and tasks inherit it, so the anonymous task
+ * query filters through the parent — the flag lives in exactly one place and
+ * a category flipped private takes its tasks with it atomically. The filter
+ * happens here in SQL, not in the page: private rows never leave the database
+ * for an anonymous request.
  */
-export async function listBoard(): Promise<{
+export async function listBoard(includePrivate: boolean): Promise<{
   categories: TodoCategory[];
   tasks: TodoTask[];
 }> {
   await initDb();
   const [cats, tasks] = await db().batch(
-    [
-      "SELECT id, name, color, position, created_at FROM todo_categories ORDER BY position, created_at",
-      "SELECT id, category_id, title, done, position, created_at, completed_at FROM todo_tasks ORDER BY position, created_at",
-    ],
+    includePrivate
+      ? [
+          "SELECT id, name, color, position, is_public, created_at FROM todo_categories ORDER BY position, created_at",
+          "SELECT id, category_id, title, done, position, created_at, completed_at FROM todo_tasks ORDER BY position, created_at",
+        ]
+      : [
+          "SELECT id, name, color, position, is_public, created_at FROM todo_categories WHERE is_public = 1 ORDER BY position, created_at",
+          "SELECT id, category_id, title, done, position, created_at, completed_at FROM todo_tasks WHERE category_id IN (SELECT id FROM todo_categories WHERE is_public = 1) ORDER BY position, created_at",
+        ],
     "read",
   );
   return {
@@ -61,6 +73,7 @@ export async function listBoard(): Promise<{
       name: r.name as string,
       color: r.color as string,
       position: Number(r.position),
+      isPublic: Number(r.is_public) === 1,
       createdAt: Number(r.created_at),
     })),
     tasks: tasks.rows.map((r) => ({
@@ -78,6 +91,7 @@ export async function listBoard(): Promise<{
 export async function createCategory(
   name: string,
   color: string,
+  isPublic: boolean,
 ): Promise<CategoryWriteResult> {
   await initDb();
   const id = randomUUID();
@@ -87,9 +101,9 @@ export async function createCategory(
     // slot out of order — the same reason oddjob's reference numbers come from
     // a counter rather than COUNT(*) + 1.
     await db().execute({
-      sql: `INSERT INTO todo_categories (id, name, color, position, created_at, updated_at)
-            SELECT ?, ?, ?, COALESCE(MAX(position) + 1, 0), ?, ? FROM todo_categories`,
-      args: [id, name, color, now, now],
+      sql: `INSERT INTO todo_categories (id, name, color, position, is_public, created_at, updated_at)
+            SELECT ?, ?, ?, COALESCE(MAX(position) + 1, 0), ?, ?, ? FROM todo_categories`,
+      args: [id, name, color, isPublic ? 1 : 0, now, now],
     });
   } catch (e) {
     if (isUniqueViolation(e)) return { ok: false, error: "name-taken" };
@@ -113,6 +127,16 @@ export async function renameCategory(
     throw e;
   }
   return { ok: true, id };
+}
+
+export async function setCategoryPublic(id: string, isPublic: boolean): Promise<void> {
+  await initDb();
+  // Deliberately does not bump updated_at — flipping visibility is not an
+  // edit, and nothing should reorder because of it.
+  await db().execute({
+    sql: "UPDATE todo_categories SET is_public = ? WHERE id = ?",
+    args: [isPublic ? 1 : 0, id],
+  });
 }
 
 export async function recolorCategory(id: string, color: string): Promise<void> {

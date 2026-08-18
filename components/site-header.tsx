@@ -13,11 +13,13 @@ const LINKS = [
 ] as const;
 
 /**
- * The shared top bar for the signed-in pages. A note page (/notes/[id]) should
- * light the notes link, so matching is prefix-based for everything except the
- * root — exact matching there or "/" would light on every page.
+ * The shared top bar. The site is publicly readable, so the nav always
+ * renders; only the right edge changes — the owner gets sign-out, everyone
+ * else a quiet sign-in link (signing in is how editing unlocks). A note page
+ * (/notes/[id]) should light the notes link, so matching is prefix-based for
+ * everything except the root.
  */
-export function SiteHeader({ signedIn = true }: { signedIn?: boolean }) {
+export function SiteHeader({ admin }: { admin: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -26,30 +28,28 @@ export function SiteHeader({ signedIn = true }: { signedIn?: boolean }) {
         <Link href="/" className="text-sm font-medium text-white">
           todo
         </Link>
-        {signedIn && (
-          <nav aria-label="primary" className="flex items-center gap-4">
-            {LINKS.map((link) => {
-              const active =
-                link.href === "/"
-                  ? pathname === "/"
-                  : pathname === link.href || pathname.startsWith(`${link.href}/`);
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "text-sm transition-colors hover:text-white",
-                    active ? "text-white" : "text-white/50",
-                  )}
-                >
-                  {link.label}
-                </Link>
-              );
-            })}
-          </nav>
-        )}
-        {signedIn && (
+        <nav aria-label="primary" className="flex items-center gap-4">
+          {LINKS.map((link) => {
+            const active =
+              link.href === "/"
+                ? pathname === "/"
+                : pathname === link.href || pathname.startsWith(`${link.href}/`);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "text-sm transition-colors hover:text-white",
+                  active ? "text-white" : "text-white/50",
+                )}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
+        {admin ? (
           <form action={logout} className="ml-auto">
             <Button
               type="submit"
@@ -63,6 +63,13 @@ export function SiteHeader({ signedIn = true }: { signedIn?: boolean }) {
               tooltipSide="bottom"
             />
           </form>
+        ) : (
+          <Link
+            href="/login"
+            className="ml-auto text-sm text-white/40 transition-colors hover:text-white"
+          >
+            sign in
+          </Link>
         )}
       </div>
     </header>

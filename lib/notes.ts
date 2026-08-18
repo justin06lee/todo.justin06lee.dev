@@ -6,6 +6,7 @@ import { db, initDb } from "@/lib/db";
 export type NoteSummary = {
   id: string;
   title: string;
+  isPublic: boolean;
   createdAt: number;
   updatedAt: number;
 };
@@ -16,16 +17,22 @@ export type Note = NoteSummary & { content: string };
  * The list query deliberately never selects `content` — a note body can be
  * 200k characters and the list renders none of it. `getNote` is the only
  * reader of the body. (No LIMIT: this is a single-person tool and the rows
- * are four narrow columns; pagination would cost more than it saves.)
+ * are narrow columns; pagination would cost more than it saves.)
+ *
+ * The visibility filter runs in SQL — private titles never leave the
+ * database for an anonymous request.
  */
-export async function listNotes(): Promise<NoteSummary[]> {
+export async function listNotes(includePrivate: boolean): Promise<NoteSummary[]> {
   await initDb();
   const result = await db().execute(
-    "SELECT id, title, created_at, updated_at FROM todo_notes ORDER BY updated_at DESC",
+    includePrivate
+      ? "SELECT id, title, is_public, created_at, updated_at FROM todo_notes ORDER BY updated_at DESC"
+      : "SELECT id, title, is_public, created_at, updated_at FROM todo_notes WHERE is_public = 1 ORDER BY updated_at DESC",
   );
   return result.rows.map((r) => ({
     id: r.id as string,
     title: r.title as string,
+    isPublic: Number(r.is_public) === 1,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   }));
@@ -34,7 +41,7 @@ export async function listNotes(): Promise<NoteSummary[]> {
 export async function getNote(id: string): Promise<Note | null> {
   await initDb();
   const result = await db().execute({
-    sql: "SELECT id, title, content, created_at, updated_at FROM todo_notes WHERE id = ?",
+    sql: "SELECT id, title, content, is_public, created_at, updated_at FROM todo_notes WHERE id = ?",
     args: [id],
   });
   const r = result.rows[0];
@@ -43,20 +50,33 @@ export async function getNote(id: string): Promise<Note | null> {
     id: r.id as string,
     title: r.title as string,
     content: r.content as string,
+    isPublic: Number(r.is_public) === 1,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
 }
 
+/** New notes start public — the site's default posture; flip in the editor. */
 export async function createNote(): Promise<string> {
   await initDb();
   const id = randomUUID();
   const now = Date.now();
   await db().execute({
-    sql: "INSERT INTO todo_notes (id, title, content, created_at, updated_at) VALUES (?, ?, '', ?, ?)",
+    sql: "INSERT INTO todo_notes (id, title, content, is_public, created_at, updated_at) VALUES (?, ?, '', 1, ?, ?)",
     args: [id, "untitled", now, now],
   });
   return id;
+}
+
+export async function setNotePublic(id: string, isPublic: boolean): Promise<boolean> {
+  await initDb();
+  // Deliberately does not bump updated_at — flipping visibility is not an
+  // edit, and the list orders by updated_at.
+  const result = await db().execute({
+    sql: "UPDATE todo_notes SET is_public = ? WHERE id = ?",
+    args: [isPublic ? 1 : 0, id],
+  });
+  return result.rowsAffected > 0;
 }
 
 export type NotePatch = { title?: string; content?: string };

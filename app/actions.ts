@@ -31,9 +31,10 @@ import {
   recolorCategory,
   renameCategory,
   renameTask,
+  setCategoryPublic,
   setTaskDone,
 } from "@/lib/todos";
-import { createNote, deleteNote, updateNote } from "@/lib/notes";
+import { createNote, deleteNote, setNotePublic, updateNote } from "@/lib/notes";
 
 /**
  * Server Actions are reachable by direct POST, not only through this UI, so
@@ -110,12 +111,24 @@ export async function logout() {
 export async function createCategoryAction(
   name: string,
   color: string,
+  isPublic: boolean,
 ): Promise<ActionResult> {
   await assertAdmin();
   if (!isTitleWithin(name, MAX_CATEGORY_NAME_LEN)) return fail("enter a category name");
   if (!isPaletteColor(color)) return fail("pick a palette color");
-  const result = await createCategory(name.trim(), color);
+  const result = await createCategory(name.trim(), color, isPublic === true);
   if (!result.ok) return fail("that category already exists");
+  revalidatePath("/");
+  return OK;
+}
+
+export async function setCategoryPublicAction(
+  id: string,
+  isPublic: boolean,
+): Promise<ActionResult> {
+  await assertAdmin();
+  if (!isRecordId(id)) return fail("unknown category");
+  await setCategoryPublic(id, isPublic === true);
   revalidatePath("/");
   return OK;
 }
@@ -217,6 +230,19 @@ export async function renameNoteAction(id: string, title: string): Promise<Actio
   if (!isRecordId(id)) return fail("unknown note");
   if (!isTitleWithin(title, MAX_NOTE_TITLE_LEN)) return fail("enter a title");
   const found = await updateNote(id, { title: title.trim() });
+  if (!found) return fail("this note was deleted");
+  revalidatePath("/notes");
+  revalidatePath(`/notes/${id}`);
+  return OK;
+}
+
+export async function setNotePublicAction(
+  id: string,
+  isPublic: boolean,
+): Promise<ActionResult> {
+  await assertAdmin();
+  if (!isRecordId(id)) return fail("unknown note");
+  const found = await setNotePublic(id, isPublic === true);
   if (!found) return fail("this note was deleted");
   revalidatePath("/notes");
   revalidatePath(`/notes/${id}`);
