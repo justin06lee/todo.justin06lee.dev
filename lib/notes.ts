@@ -1,0 +1,94 @@
+import "server-only";
+
+import { randomUUID } from "node:crypto";
+import { db, initDb } from "@/lib/db";
+
+export type NoteSummary = {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type Note = NoteSummary & { content: string };
+
+/**
+ * The list query deliberately never selects `content` — a note body can be
+ * 200k characters and the list renders none of it. `getNote` is the only
+ * reader of the body. (No LIMIT: this is a single-person tool and the rows
+ * are four narrow columns; pagination would cost more than it saves.)
+ */
+export async function listNotes(): Promise<NoteSummary[]> {
+  await initDb();
+  const result = await db().execute(
+    "SELECT id, title, created_at, updated_at FROM todo_notes ORDER BY updated_at DESC",
+  );
+  return result.rows.map((r) => ({
+    id: r.id as string,
+    title: r.title as string,
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  }));
+}
+
+export async function getNote(id: string): Promise<Note | null> {
+  await initDb();
+  const result = await db().execute({
+    sql: "SELECT id, title, content, created_at, updated_at FROM todo_notes WHERE id = ?",
+    args: [id],
+  });
+  const r = result.rows[0];
+  if (!r) return null;
+  return {
+    id: r.id as string,
+    title: r.title as string,
+    content: r.content as string,
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  };
+}
+
+export async function createNote(): Promise<string> {
+  await initDb();
+  const id = randomUUID();
+  const now = Date.now();
+  await db().execute({
+    sql: "INSERT INTO todo_notes (id, title, content, created_at, updated_at) VALUES (?, ?, '', ?, ?)",
+    args: [id, "untitled", now, now],
+  });
+  return id;
+}
+
+export type NotePatch = { title?: string; content?: string };
+
+/**
+ * Writes only the columns the patch names — saving a body can't clobber a
+ * title edit that raced it, and vice versa. Same rule as hours' updateActual.
+ */
+export async function updateNote(id: string, patch: NotePatch): Promise<boolean> {
+  await initDb();
+  const sets: string[] = [];
+  const args: (string | number)[] = [];
+  if (patch.title !== undefined) {
+    sets.push("title = ?");
+    args.push(patch.title);
+  }
+  if (patch.content !== undefined) {
+    sets.push("content = ?");
+    args.push(patch.content);
+  }
+  if (sets.length === 0) return true;
+  sets.push("updated_at = ?");
+  args.push(Date.now());
+  args.push(id);
+  const result = await db().execute({
+    sql: `UPDATE todo_notes SET ${sets.join(", ")} WHERE id = ?`,
+    args,
+  });
+  return result.rowsAffected > 0;
+}
+
+export async function deleteNote(id: string): Promise<void> {
+  await initDb();
+  await db().execute({ sql: "DELETE FROM todo_notes WHERE id = ?", args: [id] });
+}
