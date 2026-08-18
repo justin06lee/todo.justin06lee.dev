@@ -1,26 +1,69 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Scrollbars are hidden site-wide (still functional, just invisible) to match
+   justin06lee.dev. The html rule only covers the page scroller, so inner
+   overflow containers need the universal rule too. */
+html {
+  overflow-x: hidden;
+  scrollbar-width: none;
 }
+html::-webkit-scrollbar {
+  display: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+}
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/* @chrome:theme */
+/* Poppins is NOT declared here.
+ *
+ * `chrome init` writes this fenced block with an @font-face pointing at
+ * `cdn.jsdelivr.net/fontsource/fonts/poppins@latest`. The `@latest` tag is an
+ * unpinned upstream — a metrics change ships silently to every visitor — and
+ * it declared weight 400 only while this app renders `font-medium` and
+ * `font-semibold`. It comes instead from the version-pinned
+ * `@fontsource/poppins` package, imported in `app/layout.tsx` at 400/500/600 —
+ * the same fix hours.justin06lee.dev made. If `chrome init` is ever re-run it
+ * will restore the CDN @font-face into this block — delete it again. */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --font-sans: "Poppins", sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root,
+.dark {
+  --background: #000000;
+  --foreground: #ffffff;
+  --surface: #0a0a0a;
+  --surface-alt: #141414;
+  --border: rgba(255, 255, 255, 0.12);
+  --muted: rgba(255, 255, 255, 0.6);
+  --accent: #ffffff;
 }
+
+body {
+  font-family: var(--font-sans);
+}
+/* @chrome:end */
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
