@@ -56,16 +56,40 @@ export async function getNote(id: string): Promise<Note | null> {
   };
 }
 
-/** New notes start public — the site's default posture; flip in the editor. */
-export async function createNote(): Promise<string> {
+/**
+ * New notes start public — the site's default posture; flip in the editor.
+ * The defaults are the UI's whole call signature (`createNoteAction` passes
+ * nothing); the API route passes explicit values. Validation stays with the
+ * callers, same as every other writer here.
+ */
+export async function createNote(
+  title = "untitled",
+  content = "",
+  isPublic = true,
+): Promise<string> {
   await initDb();
   const id = randomUUID();
   const now = Date.now();
   await db().execute({
-    sql: "INSERT INTO todo_notes (id, title, content, is_public, created_at, updated_at) VALUES (?, ?, '', 1, ?, ?)",
-    args: [id, "untitled", now, now],
+    sql: "INSERT INTO todo_notes (id, title, content, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+    args: [id, title, content, isPublic ? 1 : 0, now, now],
   });
   return id;
+}
+
+/**
+ * Existence probe for the API's delete route: `deleteNote` is blind (a DELETE
+ * of zero rows returns the same nothing), but the API must answer 404
+ * truthfully. `getNote` would work too, at the cost of hauling a 200k body
+ * across the wire to throw away.
+ */
+export async function noteExists(id: string): Promise<boolean> {
+  await initDb();
+  const result = await db().execute({
+    sql: "SELECT 1 FROM todo_notes WHERE id = ?",
+    args: [id],
+  });
+  return result.rows.length > 0;
 }
 
 export async function setNotePublic(id: string, isPublic: boolean): Promise<boolean> {

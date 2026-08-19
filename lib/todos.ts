@@ -148,20 +148,46 @@ export async function recolorCategory(id: string, color: string): Promise<void> 
 }
 
 /**
+ * Existence probes for the API routes. The server actions are deliberately
+ * blind-success on missing ids (an UPDATE of zero rows is not an error the UI
+ * can act on), but an HTTP API must answer 404 truthfully — so the routes read
+ * before they write. Not needed by the actions; keep it that way.
+ */
+export async function categoryExists(id: string): Promise<boolean> {
+  await initDb();
+  const result = await db().execute({
+    sql: "SELECT 1 FROM todo_categories WHERE id = ?",
+    args: [id],
+  });
+  return result.rows.length > 0;
+}
+
+export async function taskExists(id: string): Promise<boolean> {
+  await initDb();
+  const result = await db().execute({
+    sql: "SELECT 1 FROM todo_tasks WHERE id = ?",
+    args: [id],
+  });
+  return result.rows.length > 0;
+}
+
+/**
  * Deletes the category and its tasks in one transaction. The DDL declares
  * ON DELETE CASCADE but libsql never enables PRAGMA foreign_keys, so the
  * cascade is simulated here — deleting only the category row would strand its
- * tasks invisibly, not blank them.
+ * tasks invisibly, not blank them. Returns how many tasks the cascade took
+ * with it (the board UI ignores this; the API reports it).
  */
-export async function deleteCategory(id: string): Promise<void> {
+export async function deleteCategory(id: string): Promise<number> {
   await initDb();
-  await db().batch(
+  const [tasks] = await db().batch(
     [
       { sql: "DELETE FROM todo_tasks WHERE category_id = ?", args: [id] },
       { sql: "DELETE FROM todo_categories WHERE id = ?", args: [id] },
     ],
     "write",
   );
+  return tasks.rowsAffected;
 }
 
 /**
