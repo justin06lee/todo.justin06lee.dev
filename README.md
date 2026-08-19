@@ -11,7 +11,7 @@
 
 ---
 
-Two surfaces, nothing else:
+Two surfaces for people (plus an [admin API](#admin-api) for scripts):
 
 - **`/` — the board.** Categories, each with a color from the house palette,
   each holding a flat list of tasks. The owner adds, checks off, renames
@@ -66,6 +66,47 @@ sessions (sha256 of the token, never the token), httpOnly cookie, and a harsh
 per-IP limiter — 10 attempts per 15 minutes, then a 24-hour lockout. Sessions
 are per-site even though the password is shared. **Never add a retry loop
 around login.**
+
+## Admin API
+
+Everything the owner can do in the UI is also reachable over HTTP at
+`/api/*`, for scripted callers (the MCP server that drives this site). Same
+code underneath: the routes call the same `lib/` writers as the server
+actions, enforce the same limits, and make the same `revalidatePath` calls —
+a mutation through the API never leaves a page serving stale data. The
+differences are wire-shaped, and deliberate:
+
+- **JSON always.** Errors come back as `{error}` with a real status code; an
+  unauthenticated call gets `401 {"error":"Unauthorized"}`, never a redirect.
+- **Truthful 404s.** The server actions are blind-success on missing ids (an
+  UPDATE of zero rows is not an error the UI can act on); the API checks
+  existence first and says not found.
+- **Same auth, same cookie.** `POST /api/auth` exchanges the password for the
+  exact `admin_session` cookie the login form sets, behind the same rate
+  limiter — the retry-loop warning above applies to this route too.
+
+| route | body | notes |
+|---|---|---|
+| `POST /api/auth` | `{password}` | 200 sets the session cookie; 401 wrong, 429 rate-limited, 413 oversized, 503 no `ADMIN_KEY` |
+| `GET /api/auth` | — | 200 with a live session, else 401 |
+| `DELETE /api/auth` | — | sign out; always 200 |
+| `GET /api/board` | — | full board, private included, tasks nested per category |
+| `POST /api/categories` | `{name, color, isPublic?}` | 201; 409 on a duplicate name |
+| `PATCH /api/categories/:id` | `{name?, color?, isPublic?}` | 404 missing; 409 renaming onto a taken name |
+| `DELETE /api/categories/:id` | — | app-level cascade; reports `deletedTasks` |
+| `POST /api/categories/:id/clear-done` | — | reports `cleared` |
+| `POST /api/tasks` | `{categoryId, title}` | 201; 404 when the category is gone |
+| `PATCH /api/tasks/:id` | `{title?, done?}` | |
+| `DELETE /api/tasks/:id` | — | |
+| `GET /api/notes` | — | list, private included, bodies excluded |
+| `POST /api/notes` | `{title?, content?, isPublic?}` | 201; defaults `untitled` / empty / public |
+| `GET /api/notes/:id` | — | the full note, body included |
+| `PATCH /api/notes/:id` | `{title?, content?, isPublic?}` | |
+| `DELETE /api/notes/:id` | — | |
+
+Everything past `/api/auth` is owner-only — the anonymous read surface is the
+site itself, not the API. Ids are `crypto.randomUUID()` shapes; anything else
+is a 400 before it reaches a query.
 
 ## Development
 
